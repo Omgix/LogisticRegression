@@ -8,7 +8,7 @@
 
 bool
 LogisticRegression::learn(const SpMat &samples, const Vector &target, bool verbose) {
-  if (samples.cols() != target.size()) {
+  if (samples.rows() != target.size()) {
     _error_msg = "Unmached rows of sample data and size of target vector";
     return false;
   }
@@ -19,7 +19,7 @@ LogisticRegression::learn(const SpMat &samples, const Vector &target, bool verbo
   _weights = Vector::Zero(n_features);
   std::vector<int> index(n_samples);
   std::iota(index.begin(),index.end(),0);
-  Vector total_l1 = Vector::Zero(n_features);
+  Vector total_l2 = Vector::Zero(n_features);
 
   double mu = 0.0;
   double norm = 1.0;
@@ -35,31 +35,23 @@ LogisticRegression::learn(const SpMat &samples, const Vector &target, bool verbo
 
     const int SIZE = 4;
 
-    #pragma omp parallel for schedule(dynamic)
+    #pragma omp parallel for// schedule(dynamic)
     for (unsigned k = 0; k < n_samples; k += SIZE) {
       Eigen::SparseVector<double> gradient (n_features);
       for (unsigned int j = k; j < k + SIZE && j < n_samples; j++){
-        mu += (_l1*_alpha);
+        mu += (_l2*_alpha);
+        double alpha = _alpha / sqrt(j + n_samples * n + 1);
         int label = target[index[k]];
         SpMat::InnerIterator iter = SpMat::InnerIterator(samples, index[k]);
         double logit = 0;
         for(auto it = iter; it; ++it)
           logit += it.value() * _weights[it.col()];
         double predicted = sigmoid(logit);
-        for(auto it = iter; it; ++it){
-          gradient.coeffRef(it.col()) += _alpha * (label - predicted) * it.value();
-          if(_l1){
-            // Cumulative L1-regularization
-            // Tsuruoka, Y., Tsujii, J., and Ananiadou, S., 2009
-            // http://aclweb.org/anthology/P/P09/P09-1054.pdf
-            double z = _weights[it.col()];
-            if(_weights[it.col()] > 0.0){
-              _weights[it.col()] = std::max(0.0,(double)(_weights[it.col()] - (mu + total_l1[it.col()])));
-            }else if(_weights[it.col()] < 0.0){
-              _weights[it.col()] = std::min(0.0,(double)(_weights[it.col()] + (mu - total_l1[it.col()])));
-            }
-            total_l1[it.col()] += (_weights[it.col()] - z);
-          }
+        for(auto it = iter; it; ++it) {
+          if(_l2)
+            gradient.coeffRef(it.col()) += alpha * ((label - predicted) * it.value() + 2 * _l2 * _weights[it.col()]);
+          else
+            gradient.coeffRef(it.col()) += alpha * (label - predicted) * it.value();
         }
       }
 
@@ -67,10 +59,10 @@ LogisticRegression::learn(const SpMat &samples, const Vector &target, bool verbo
     }
 
     norm = (_weights - old_weights).norm();
-    if(n && n % 100 == 0){
-      double l1n = _weights.cwiseAbs().sum();
+    if(n && n % 10 == 0){
+      double l2n = _weights.norm();
       if (verbose)
-        printf("# convergence: %1.4f l1-norm: %1.4e iterations: %i\n",norm,l1n,n);
+        printf("# convergence: %1.4f l2-norm: %1.4e iterations: %i\n",norm,l2n,n);
     }
     if(++n > _maxit){
       _error_msg = "Max iterations reached";

@@ -66,22 +66,13 @@ double sigmoid(double x){
   return 1.0/(1.0 + exp(-x));
 }
 
-double classify(SpMat::InnerIterator& iter, Eigen::VectorXd& weights){
-
-  double logit = 0.0;
-  for(auto it = iter; it; ++it)
-    logit += it.value() * weights[it.col()];
-
-  return sigmoid(logit);
-}
-
 
 int main(int argc, const char* argv[]){
 
   // Learning rate
   double alpha = 0.001;
   // L1 penalty weight
-  double l1 = 0.0001;
+  double l2 = 0.0001;
   // Max iterations
   unsigned int maxit = 50000;
   // Shuffle data set
@@ -133,7 +124,7 @@ int main(int argc, const char* argv[]){
         eps = atof(argv[i+1]);
       }
       if(string(argv[i]) == "-l" && i < argc-1){
-        l1 = atof(argv[i+1]);
+        l2 = atof(argv[i+1]);
       }
       if(string(argv[i]) == "-v"){
         verbose = 1;
@@ -152,7 +143,7 @@ int main(int argc, const char* argv[]){
   if(!model_in.length()){
     cout << "# learning rate:   " << alpha << endl;
     cout << "# convergence rate:  " << eps << endl;
-    cout << "# l1 penalty weight: " << l1 << endl;
+    cout << "# l2 penalty weight: " << l2 << endl;
     cout << "# max. iterations:   " << maxit << endl;   
     cout << "# training data:   " << argv[argc-1] << endl;
     if(model_out.length()) cout << "# model output:    " << model_out << endl;
@@ -162,8 +153,9 @@ int main(int argc, const char* argv[]){
   if(predict_file.length()) cout << "# predictions:     " << predict_file << endl;
 
   std::vector<Triplet> data;
+  std::vector<int> target_tmp;
+  std::map<int, double> weights_tmp;
   Eigen::VectorXd weights;
-  Eigen::VectorXd target;
   random_device rd;
   mt19937 g(rd());
   ifstream fin;
@@ -180,16 +172,11 @@ int main(int argc, const char* argv[]){
         if(line[0] != '#' && line[0] != ' '){
           vector<string> tokens = split(line,' ');
           if(tokens.size() == 2){
-            weights[atoi(tokens[0].c_str())] = atof(tokens[1].c_str());
+            int col = atoi(tokens[0].c_str());
+            double val = atof(tokens[1].c_str());
+            n_features = std::max(n_features, (size_t)col);
+            weights_tmp[col] = val;
             idx++;
-          }
-        } else {
-          size_t pos = line.find("SIZE");
-          if (pos != std::string::npos) {
-            stringstream sizess (line.substr(pos + 4));
-            sizess >> n_features;
-            weights = Eigen::VectorXd::Zero(n_features);
-            target = Eigen::VectorXd::Zero(n_features);
           }
         }
       }
@@ -201,51 +188,51 @@ int main(int argc, const char* argv[]){
     }fin.close();
   }
 
-  LogisticRegression model (shuf, alpha, l1, eps, maxit);
+  LogisticRegression model (shuf, alpha, l2, eps, maxit);
 
   // If no weights file provided, read training file and calculate weights
-  if(!weights.size()){
+  if(weights_tmp.empty()){
 
     fin.open(argv[argc-1]);
-    int idx = 0;
+    size_t idx = 0;
     while (getline(fin, line)){
       if(line.length()){
         if(line[0] != '#' && line[0] != ' '){
           vector<string> tokens = split(line,' ');
           if(atoi(tokens[0].c_str()) == 1){
-            target[idx] = 1;
+            target_tmp.push_back(1);
           }else{
-            target[idx] = 0;
+            target_tmp.push_back(0);
           }
+          bool none = true;
           for(unsigned int i = 1; i < tokens.size(); i++){
             //if(strstr (tokens[i],"#") == NULL){
               vector<string> feat_val = split(tokens[i],':');
               if(feat_val.size() == 2){
-                data.emplace_back(idx, atoi(feat_val[0].c_str()), atof(feat_val[1].c_str()));
-                if(randw){
-                  weights[atoi(feat_val[0].c_str())] = -1.0+2.0*(double)rd()/rd.max();
-                }else{
-                  weights[atoi(feat_val[0].c_str())] = 0.0;
-                }
+                none = false;
+                int col = atoi(feat_val[0].c_str());
+                double val = atof(feat_val[1].c_str());
+                data.emplace_back(idx, col, val);
+                n_features = std::max(n_features, (size_t)col+1);
               }
             //}
           }
-          idx++;
-          //if(verbose) cout << "read example " << data.size() << " - found " << example.size()-1 << " features." << endl; 
-        } else {
-          size_t pos = line.find("SIZE");
-          if (pos != std::string::npos) {
-            size_t comma = line.find(',');
-            stringstream sizess (line.substr(pos + 4, comma));
-            if (comma != std::string::npos) {
-              sizess >> n_samples;
-              stringstream featuresss (line.substr(comma + 1));
-              featuresss >> n_features;
-              weights = Eigen::VectorXd::Zero(n_features);
-              target = Eigen::VectorXd::Zero(n_features);
-            }
-          }
-        }  
+          if (!none)
+            idx++;
+        }
+      }
+    }
+    n_samples = idx;
+    Eigen::VectorXd target = Eigen::VectorXd(n_samples);
+    weights = Eigen::VectorXd(n_features);
+    for (unsigned i = 0; i < n_samples; ++i)
+      target[i] = target_tmp[i];
+    for (auto &nonzero: data) {
+      int col = nonzero.col();
+      if(randw){
+        weights[col] = -1.0+2.0*(double)rd()/rd.max();
+      }else{
+        weights[col] = 0.0;
       }
     }
     fin.close();
@@ -257,7 +244,7 @@ int main(int argc, const char* argv[]){
     samples.setFromTriplets(data.begin(), data.end());
 
     auto start = std::chrono::steady_clock::now();
-    model.learn(samples, target, true);
+    model.learn(samples, target, false);
     auto end =  std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "# time to convergence: " << (double)duration.count() / 1000 << 's' << std::endl;
@@ -272,6 +259,10 @@ int main(int argc, const char* argv[]){
       cout << "# written weights to file " << model_out << endl;
     }
 
+  } else {
+    weights = Eigen::VectorXd(n_features);
+    for (auto it = weights_tmp.begin(); it != weights_tmp.end(); it++)
+      weights_tmp[it->first] = it->second;
   }
 
   // If a test file is provided, classify it using either weights from
@@ -317,22 +308,6 @@ int main(int argc, const char* argv[]){
           }else{
             if(label == 1){fn++;}else{fp++;}  
             if(verbose) cout << "\tincorrect" << endl;
-          }
-        } else {
-          size_t pos = line.find("SIZE");
-          if (pos != std::string::npos) {
-            size_t comma = line.find(',');
-            stringstream sizess (line.substr(pos + 4, comma));
-            if (comma != std::string::npos) {
-              sizess >> n_samples;
-              stringstream featuresss (line.substr(comma + 1));
-              size_t len_feature = n_features;
-              featuresss >> n_features;
-              if (n_features != len_feature) {
-                cout << "Unmached number of features: (" << n_features <<'/' << len_feature << ')' << endl;
-                break;
-              }
-            }
           }
         }
       }

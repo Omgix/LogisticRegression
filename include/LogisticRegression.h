@@ -9,7 +9,7 @@ class LogisticRegression {
  public:
   typedef Eigen::SparseMatrix<double, Eigen::RowMajor> SpMat;
   typedef Eigen::VectorXd Vector;
-  explicit LogisticRegression(bool shuf = true, double alpha = 0.001, double l1 = 0.0001,
+  explicit LogisticRegression(bool shuf = true, double alpha = 0.001, double l2 = 0.0001,
       double eps = 0.005, unsigned maxit = 50000);
   bool learn(const SpMat &samples, const Vector &target, bool verbose = false);
   long features() { return _weights.size(); }
@@ -22,7 +22,7 @@ class LogisticRegression {
  private:
   Vector _weights;
   double _alpha;
-  double _l1;
+  double _l2;
   double _eps;
   unsigned _maxit;
   bool _shuf;

@@ -2,8 +2,8 @@
 
 #include "include/LogisticRegression.h"
 
-LogisticRegression::LogisticRegression(bool shuf, double alpha, double l1, double eps, unsigned int maxit):
-                                      _alpha(alpha), _l1(l1), _eps(eps), _maxit(maxit), _shuf(shuf){}
+LogisticRegression::LogisticRegression(bool shuf, double alpha, double l2, double eps, unsigned int maxit):
+                                      _alpha(alpha), _l2(l2), _eps(eps), _maxit(maxit), _shuf(shuf){}
 
 
 long
