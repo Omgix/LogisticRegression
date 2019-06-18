@@ -33,7 +33,7 @@ LogisticRegression::learn(const SpMat &samples, const Vector &target, bool verbo
     if(_shuf)
       std::shuffle(index.begin(),index.end(),g);
 
-    const int SIZE = 4;
+    const int SIZE = 20;
 
     for (unsigned k = 0; k < n_samples; k += SIZE) {
       std::vector<Eigen::SparseVector<double>> gradients;

@@ -33,9 +33,9 @@ LogisticRegression::learn(const SpMat &samples, const Vector &target, bool verbo
     if(_shuf)
       std::shuffle(index.begin(),index.end(),g);
 
-    const int SIZE = 4;
+    const int SIZE = 20;
 
-    #pragma omp parallel for// schedule(dynamic)
+    #pragma omp parallel for schedule(dynamic)
     for (unsigned k = 0; k < n_samples; k += SIZE) {
       Eigen::SparseVector<double> gradient (n_features);
       for (unsigned int j = k; j < k + SIZE && j < n_samples; j++){
